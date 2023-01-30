@@ -1,18 +1,34 @@
-import session from 'express-session';
 import express from 'express';
 import cors from 'cors';
 import * as model from './model.js';
 import dotenv from 'dotenv';
-import cookieParser from 'cookie-parser';
 import * as config from './config.js';
-
-declare module 'express-session' {
-	export interface SessionData {
-		user: { [key: string]: any };
-	}
-}
+import jwt from 'jsonwebtoken';
 
 dotenv.config();
+
+interface CustomRequest extends Request {
+ token: string;
+}
+
+const decodeJwt = (token: string) => {
+    let base64Url = token.split('.')[1];
+    let base64 = base64Url.replace('-', '+').replace('_', '/');
+    let decodedData = JSON.parse(Buffer.from(base64, 'base64').toString('binary'));
+    return decodedData;
+}
+
+const verifyToken = (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    const bearerHeader = req.headers['authorization'];
+    if (typeof bearerHeader !== 'undefined') {
+        const bearer = bearerHeader.split(' ');
+        const bearerToken = bearer[1];
+        (req as unknown as CustomRequest).token = bearerToken;
+        next();
+    } else {
+        res.sendStatus(403);
+    }
+};
 
 const app = express();
 app.use(cors({
@@ -20,30 +36,8 @@ app.use(cors({
 	methods: ['POST', 'PUT', 'GET', 'OPTIONS', 'HEAD'],
 	credentials: true
 }));
-app.use(cookieParser());
 app.use(express.json());
 const port = config.port;
-
-app.use(
-	session({
-		resave: true,
-		saveUninitialized: true,
-		secret: process.env.SESSION_SECRET,
-		cookie: {
-			httpOnly: true,
-			sameSite: 'lax',
-			secure: false
-		}
-	})
-);
-
-const authorizeUser = (req: express.Request, res: express.Response, next: express.NextFunction) => {
-	if (req.session.user) {
-		next();
-	} else {
-		res.status(401).send({});
-	}
-}
 
 app.get('/', (req: express.Request, res: express.Response) => {
 	res.send(model.getApiInstructions());
@@ -53,7 +47,7 @@ app.get('/welcomemessage', (req: express.Request, res: express.Response) => {
 	res.send(model.getWelcomeMessage());
 })
 
-app.post('/welcomemessage', authorizeUser, (req: express.Request, res: express.Response) => {
+app.post('/welcomemessage', verifyToken, (req: express.Request, res: express.Response) => {
 	const { welcomeMessage } = req.body;
 	model.saveWelcomeMessage(welcomeMessage);
 	res.send({});
@@ -62,26 +56,34 @@ app.post('/welcomemessage', authorizeUser, (req: express.Request, res: express.R
 app.post('/login', (req: express.Request, res: express.Response) => {
 	const password = req.body.password;
 	if (password === process.env.ADMIN_PASSWORD) {
-		req.session.user = 'admin' as any;
-		req.session.cookie.expires = new Date(Date.now() + config.secondsTillTimeout * 1000);
-		req.session.save();
-		res.send('ok');
+		const user = {
+			firstName: 'Admin',
+			lastName: 'User',
+			accessGroups: [
+				'loggedInUsers', 'admins'
+			]
+		}
+		jwt.sign({ user }, process.env.SESSION_SECRET, { expiresIn: config.secondsTillTimeout + 's' }, (err: any, token: string) => {
+			res.json({
+				user,
+				token
+			});
+		})
 	} else {
 		res.status(401).send({});
 	}
 });
 
-app.get('/currentuser', (req: express.Request, res: express.Response) => {
-	if (req.session.user) {
-		res.send(req.session.user);
-	} else {
-		res.status(403).send({});
-	}
-});
-
-app.get('/logout', (req, res) => {
-	req.session.destroy((err) => {
-		res.send('User logged out');
+app.post('/currentuser', verifyToken, (req: express.Request, res: express.Response) => {
+	jwt.verify((req as unknown as CustomRequest).token, process.env.SESSION_SECRET, (err, authData) => {
+		if (err) {
+			res.sendStatus(403);
+		} else {
+			const data = decodeJwt((req as unknown as CustomRequest).token);
+			res.json({
+				user: data.user
+			});
+		}
 	});
 });
 

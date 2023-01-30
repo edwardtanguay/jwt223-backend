@@ -30,8 +30,7 @@ content-type: application/json
 	"password": "123"
 }
 
-### GET LOGGED IN USER GET 
-GET {{url}}/currentuser
-
-### LOGOUT
-GET {{url}}/logout
+### GET CURRENT USER
+POST {{url}}/currentuser
+content-type: application/json
+authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyIjp7ImZpcnN0TmFtZSI6IkFkbWluIiwibGFzdE5hbWUiOiJVc2VyIiwiYWNjZXNzR3JvdXBzIjpbImxvZ2dlZEluVXNlcnMiLCJhZG1pbnMiXX0sImlhdCI6MTY3NTA0MTQ0NywiZXhwIjoxNjc1MDQxNDY3fQ.xeeDVpoOwjAi5l8q_qry0xzC31LWdXA-WvdG3nhQWJs
